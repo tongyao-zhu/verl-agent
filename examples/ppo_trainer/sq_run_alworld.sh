@@ -12,10 +12,10 @@ if [ -z "$model_name" ]; then
     model_name="Qwen/Qwen2.5-1.5B-Instruct"
     experiment_name="ppo_qwen2.5_1.5b"
 elif [ "$model_name" == "sft2-step84" ]; then
-    model_name="/home/aiops/zhuty/verl-agent/sft_models/model_sft2/global_step_84"
+    model_name="tyzhu/verl-agent-af-sft-84"
     experiment_name="ppo_qwen2.5_1.5b-sft84"
 elif [ "$model_name" == "sft2-step126" ]; then
-    model_name="/home/aiops/zhuty/verl-agent/sft_models/model_sft2/global_step_126"
+    model_name="tyzhu/verl-agent-af-sft-126"
     experiment_name="ppo_qwen2.5_1.5b-sft126"
 else
     experiment_name="ppo_${model_name//\//_}"
