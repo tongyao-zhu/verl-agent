@@ -431,6 +431,14 @@ class RayPPOTrainer:
         self.ray_worker_group_cls = ray_worker_group_cls
         self.device_name = device_name
         self.validation_generations_logger = ValidationGenerationsLogger()
+        
+        # Initialize SFT data collector if COLLECT_SFT is enabled
+        import os
+        self.collect_sft = os.environ.get("COLLECT_SFT", "False").lower() == "true"
+        if self.collect_sft:
+            from verl.utils.sft_data_collector import SFTDataCollector
+            self.sft_data_collector = SFTDataCollector(tokenizer=tokenizer)
+            print("🎯 SFT data collection enabled - trajectories will be saved for SFT training")
 
         # if ref_in_actor is True, the reference policy will be actor without lora applied
         self.ref_in_actor = config.actor_rollout_ref.model.get('lora_rank', 0) > 0
@@ -747,6 +755,18 @@ class RayPPOTrainer:
                                                     is_train=False,
                                                     )
             print('validation generation end')
+            
+            # Collect SFT data if enabled
+            if self.collect_sft:
+                # Extract success information from the batch
+                success_info = {}
+                if hasattr(test_output_gen_batch, 'non_tensor_batch') and test_output_gen_batch.non_tensor_batch:
+                    for k in test_output_gen_batch.non_tensor_batch.keys():
+                        if 'success' in k.lower():
+                            success_info[k] = test_output_gen_batch.non_tensor_batch[k]
+                
+                self.sft_data_collector.add_validation_batch(test_output_gen_batch, success_info)
+            
             del test_batch
             test_batch = test_output_gen_batch
             # Store generated outputs
@@ -1008,6 +1028,12 @@ class RayPPOTrainer:
             pprint(f"Initial validation metrics: {val_metrics}")
             logger.log(data=val_metrics, step=self.global_steps)
             if self.config.trainer.get("val_only", False):
+                # Save SFT data if collection is enabled
+                if self.collect_sft:
+                    import os
+                    require_success = os.environ.get("SFT_REQUIRE_SUCCESS", "False").lower() == "true"
+                    output_dir = self.sft_data_collector.save_sft_data(require_success=require_success)
+                    print(f"✅ SFT data collection completed! Data saved to: {output_dir}")
                 return
 
         # add tqdm

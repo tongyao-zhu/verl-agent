@@ -280,7 +280,7 @@ trainer:
   device: cuda
 
 ray_init:
-  num_cpus: null # `None` means using all CPUs, which might cause hang if limited in systems like SLURM. Please set to a number allowed then.
+  num_cpus: 32 # `None` means using all CPUs, which might cause hang if limited in systems like SLURM. Please set to a number allowed then.
 
 
 env:

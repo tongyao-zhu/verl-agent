@@ -100,17 +100,23 @@ class AlfWorldEnvironmentManager(EnvironmentManagerBase):
                     obs_key="text_obs",
                     action_key="action")
             
+        # Get prompt template variant from config
+        prompt_variant = self.config.env.get('prompt_template', 'default')
+        
         for i in range(len(text_obs)):
             # exclude 'help' in admissible_actions[i]
             reformatted_admissible_actions = "\n ".join(f"'{s}'" for s in admissible_actions[i] if s != 'help')
 
+            # Select template based on history and variant
             if init or self.config.env.history_length <= 0:
-                obs = ALFWORLD_TEMPLATE_NO_HIS.format(
+                template = new_variants[prompt_variant]['no_history'] if prompt_variant != 'default' else ALFWORLD_TEMPLATE_NO_HIS
+                obs = template.format(
                     current_observation=text_obs[i],
                     admissible_actions=reformatted_admissible_actions
                 )
             else:
-                obs = ALFWORLD_TEMPLATE.format(
+                template = new_variants[prompt_variant]['with_history'] if prompt_variant != 'default' else ALFWORLD_TEMPLATE
+                obs = template.format(
                     task_description=self.tasks[i],
                     step_count=len(self.memory[i]),
                     history_length=valid_lens[i],

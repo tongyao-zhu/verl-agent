@@ -33,8 +33,8 @@ def run_ppo(config) -> None:
     if not ray.is_initialized():
         # this is for local ray cluster
         ray.init(
-            runtime_env={"env_vars": {"TOKENIZERS_PARALLELISM": "true", "NCCL_DEBUG": "WARN", "VLLM_LOGGING_LEVEL": "WARN", "VLLM_ALLOW_RUNTIME_LORA_UPDATING": "true"}},
-            num_cpus=config.ray_init.num_cpus,
+            # runtime_env={"env_vars": {"TOKENIZERS_PARALLELISM": "true", "NCCL_DEBUG": "WARN", "VLLM_LOGGING_LEVEL": "WARN", "VLLM_ALLOW_RUNTIME_LORA_UPDATING": "true"}},
+            num_cpus=32,
         )
 
     runner = TaskRunner.remote()
@@ -47,9 +47,23 @@ class TaskRunner:
         # print initial config
         from pprint import pprint
 
-        from omegaconf import OmegaConf
+        from omegaconf import OmegaConf, open_dict
 
         from verl.utils.fs import copy_to_local
+
+        # Check if COLLECT_SFT mode is enabled
+        collect_sft = os.environ.get("COLLECT_SFT", "False").lower() == "true"
+        if collect_sft:
+            print("🎯 COLLECT_SFT mode enabled - will collect trajectories for SFT training")
+            # Enable validation-only mode for SFT collection
+            with open_dict(config):
+                config.trainer.val_only = True
+                config.trainer.val_before_train = True
+                # Set environment seed if specified
+                sft_seed = os.environ.get("SFT_SEED", None)
+                if sft_seed is not None:
+                    config.env.seed = int(sft_seed)
+                    print(f"🎲 Set environment seed to {sft_seed} for reproducible SFT data")
 
         pprint(OmegaConf.to_container(config, resolve=True))  # resolve=True will eval symbol values
         OmegaConf.resolve(config)

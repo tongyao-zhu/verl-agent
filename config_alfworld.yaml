@@ -1,0 +1,50 @@
+# Configuration for Real AlfWorld SFT trajectory generation
+# Based on examples/ppo_trainer/run_alfworld.sh
+
+# Data settings
+data:
+  train_batch_size: 32  # Smaller for trajectory generation
+  val_batch_size: 32
+  max_prompt_length: 2048
+  max_response_length: 512
+  filter_overlong_prompts: True
+  truncation: 'error'
+  return_raw_chat: True
+
+# Model and rollout configuration
+actor_rollout_ref:
+  model:
+    path: "Qwen/Qwen2.5-1.5B-Instruct"
+    use_remove_padding: True
+    enable_gradient_checkpointing: True
+  rollout:
+    name: vllm
+    tensor_model_parallel_size: 1  # Reduced for simpler setup
+    gpu_memory_utilization: 0.4
+    enable_chunked_prefill: False
+    enforce_eager: False
+    free_cache_engine: False
+    log_prob_micro_batch_size_per_gpu: 16
+    val_kwargs:
+      temperature: 0.4
+      do_sample: True
+
+# Environment configuration
+env:
+  env_name: 'alfworld/AlfredTWEnv'
+  seed: 0
+  max_steps: 30  # Reduced for faster testing
+  rollout:
+    n: 4  # Number of rollout workers
+  resources_per_worker:
+    num_cpus: 0.01
+
+# General settings
+env_num: 4  # Number of parallel environments
+group_n: 1
+batch_size: 4
+num_batches: 5
+
+# ALfWorld specific configuration
+alf_config_path: "agent_system/environments/env_package/alfworld/configs/config_tw.yaml"
+model_path: "Qwen/Qwen2.5-1.5B-Instruct"
