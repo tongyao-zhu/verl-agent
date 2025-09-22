@@ -693,6 +693,11 @@ class RayPPOTrainer:
         self.validation_generations_logger.log(self.config.trainer.logger, samples, self.global_steps)
 
     def _validate(self):
+        # Check if Pass@k evaluation is enabled (when val_kwargs.n > 1)
+        val_n = self.config.actor_rollout_ref.rollout.val_kwargs.get('n', 1)
+        if val_n > 1:
+            print(f"🎯 Pass@{val_n} evaluation enabled - generating {val_n} samples per task")
+        
         reward_tensor_lst = []
         data_source_lst = []
         success_rate_dict = {}
@@ -705,7 +710,7 @@ class RayPPOTrainer:
         for test_data in self.val_dataloader:
             test_batch = DataProto.from_single_dict(test_data)
 
-            # repeat test batch
+            # repeat test batch - this creates n rollouts as separate samples
             test_batch = test_batch.repeat(repeat_times=self.config.actor_rollout_ref.rollout.val_kwargs.n, interleave=True)
 
             # we only do validation on rule-based rm
@@ -736,24 +741,18 @@ class RayPPOTrainer:
                 "pad_token_id": self.tokenizer.pad_token_id,
                 "recompute_log_prob": False,
                 "do_sample": self.config.actor_rollout_ref.rollout.val_kwargs.do_sample,
+                "temperature": self.config.actor_rollout_ref.rollout.val_kwargs.temperature,
                 "validate": True,
             }
             print(f"test_gen_batch meta info: {test_gen_batch.meta_info}")
 
-            # # pad to be divisible by dp_size
-            # test_gen_batch_padded, pad_size = pad_dataproto_to_divisor(test_gen_batch, self.actor_rollout_wg.world_size)
-            # test_output_gen_batch_padded = self.actor_rollout_wg.generate_sequences(test_gen_batch_padded)
-
-            # # unpad
-            # test_output_gen_batch = unpad_dataproto(test_output_gen_batch_padded, pad_size=pad_size)
-
             ################ agent-environment loop ###############
             test_output_gen_batch = self.traj_collector.multi_turn_loop(
-                                                    gen_batch=test_gen_batch,
-                                                    actor_rollout_wg=self.actor_rollout_wg,
-                                                    envs=self.val_envs,
-                                                    is_train=False,
-                                                    )
+                                            gen_batch=test_gen_batch,
+                                            actor_rollout_wg=self.actor_rollout_wg,
+                                            envs=self.val_envs,
+                                            is_train=False,
+                                            )
             print('validation generation end')
             
             # Collect SFT data if enabled
@@ -773,8 +772,6 @@ class RayPPOTrainer:
             output_ids = test_output_gen_batch.batch["responses"]
             output_texts = [self.tokenizer.decode(ids, skip_special_tokens=True) for ids in output_ids]
             sample_outputs.extend(output_texts)
-
-            # test_batch = test_batch.union(test_output_gen_batch)
 
             # evaluate using reward_function
             result = self.val_reward_fn(test_batch, return_dict=True)
@@ -816,7 +813,70 @@ class RayPPOTrainer:
         for k, v in success_rate.items():
             metric_dict[f'val/{k}'] = v
 
+        # Add Pass@k metrics if enabled
+        if val_n > 1:
+            passk_metrics = self._compute_passk_metrics(reward_tensor, data_sources, val_n)
+            metric_dict.update(passk_metrics)
+            
+            # Log Pass@k summary
+            passk_summary = {k: v for k, v in passk_metrics.items() if 'overall' in k}
+            print(f"Pass@{val_n} metrics: {passk_summary}")
+
         return metric_dict
+
+    def _compute_passk_metrics(self, reward_tensor, data_sources, k):
+        """Compute Pass@k metrics from repeated validation results"""
+        from collections import defaultdict
+        
+        passk_metrics = {}
+        
+        # Group scores by original task (data_source)
+        # With repeat(interleave=True), the structure is:
+        # [task1_sample1, task2_sample1, ..., taskN_sample1, task1_sample2, task2_sample2, ...]
+        task_sample_tracker = defaultdict(list)
+        
+        total_samples = len(reward_tensor)
+        original_batch_size = total_samples // k
+        
+        for i in range(total_samples):
+            # With interleave=True:
+            # task_idx = i % original_batch_size (which original task)
+            # sample_idx = i // original_batch_size (which sample for that task)
+            task_idx = i % original_batch_size
+            data_source = data_sources[i]
+            score = reward_tensor[i].item()
+            
+            # Create unique task identifier using task_idx to distinguish repeated tasks
+            task_key = f"{data_source}_{task_idx}"
+            task_sample_tracker[task_key].append(score)
+        
+        # Compute Pass@k for each unique task
+        successful_tasks = 0
+        total_tasks = 0
+        task_type_results = defaultdict(list)
+        
+        for task_key, scores in task_sample_tracker.items():
+            if len(scores) >= k:
+                # For Pass@k, check if ANY of the k samples succeeded (score > 0)
+                task_success = any(score > 0.0 for score in scores[:k])
+                
+                total_tasks += 1
+                if task_success:
+                    successful_tasks += 1
+                
+                # Extract task type from task_key (remove the _N suffix)
+                task_type = '_'.join(task_key.split('_')[:-1])
+                task_type_results[task_type].append(float(task_success))
+        
+        # Overall Pass@k
+        if total_tasks > 0:
+            passk_metrics[f'val/pass@{k}/overall'] = successful_tasks / total_tasks
+        
+        # Per-task-type Pass@k (average across tasks of same type)
+        for task_type, successes in task_type_results.items():
+            passk_metrics[f'val/pass@{k}/{task_type}'] = sum(successes) / len(successes)
+        
+        return passk_metrics
 
     def init_workers(self):
         """Initialize distributed training workers using Ray backend.
@@ -1032,8 +1092,14 @@ class RayPPOTrainer:
                 if self.collect_sft:
                     import os
                     require_success = os.environ.get("SFT_REQUIRE_SUCCESS", "False").lower() == "true"
-                    output_dir = self.sft_data_collector.save_sft_data(require_success=require_success)
+                    worldmodel_mode = os.environ.get("SFT_WORLDMODEL_MODE", None)
+                    output_dir = self.sft_data_collector.save_sft_data(
+                        require_success=require_success, 
+                        worldmodel_mode=worldmodel_mode
+                    )
                     print(f"✅ SFT data collection completed! Data saved to: {output_dir}")
+                    if worldmodel_mode:
+                        print(f"🌍 Used world model format: {worldmodel_mode}")
                 return
 
         # add tqdm
