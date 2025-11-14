@@ -16,8 +16,8 @@ export TOKENIZERS_PARALLELISM=false
 # fi
 
 nproc_per_node=8
-save_path=/home/aiops/zhuty/verl-agent/sft_models/model_sft2
-sft_data_dir=/home/aiops/zhuty/verl-agent/sft_data_20250917_141816
+save_path=/home/aiops/zhuty/verl-agent/sft_models/model_sft_new2
+sft_data_dir=/home/aiops/zhuty/verl-agent/sft_data_20250923_152948
 
 # Validate that the SFT data directory exists
 if [ ! -d "$sft_data_dir" ]; then

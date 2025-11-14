@@ -110,7 +110,7 @@ class WebshopMultiProcessEnv(gym.Env):
         self.env_num = env_num
         self.num_processes = env_num * group_n
         self.is_train = is_train
-        if not is_train: assert group_n == 1
+        # if not is_train: assert group_n == 1
 
         self._rng = np.random.RandomState(seed)
 

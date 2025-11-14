@@ -226,6 +226,7 @@ class TrajectoryCollector:
             episode_lengths: np.ndarray,
             success: Dict[str, np.ndarray],
             traj_uid: np.ndarray,
+            observation_sequences: List[List[str]] = None,
             ) -> DataProto:
         """
         Collect and organize trajectory data, handling batch size adjustments to meet parallel training requirements.
@@ -273,6 +274,11 @@ class TrajectoryCollector:
                     # success_rate
                     for key, value in success_rate.items():
                         data[key] = value
+                    
+                    # observation sequences for world model training
+                    if observation_sequences and bs < len(observation_sequences):
+                        data['observation_sequence'] = observation_sequences[bs]
+                        print(f"🔍 DEBUG: Added observation_sequence to trajectory {bs}: {len(observation_sequences[bs])} observations")
 
                     effective_batch.append(data)
             
@@ -330,6 +336,18 @@ class TrajectoryCollector:
         total_infos = [[] for _ in range(batch_size)]
         episode_lengths = np.zeros(batch_size, dtype=np.int32)
         episode_rewards = np.zeros(batch_size, dtype=np.float32)
+        
+        # Track observation sequences for world model training
+        observation_sequences = [[] for _ in range(batch_size)]
+        # Store initial observations (step 0)
+        print(f"🔍 DEBUG: Collecting initial observations for {batch_size} environments")
+        for i in range(batch_size):
+            if obs['anchor'] is not None:
+                initial_obs = obs['anchor'][i] if isinstance(obs['anchor'], (list, np.ndarray)) else obs['anchor']
+                observation_sequences[i].append(str(initial_obs))
+                print(f"🔍 DEBUG: Env {i}: Initial observation collected (length: {len(str(initial_obs))})")
+            else:
+                print(f"⚠️  DEBUG: Env {i}: No anchor observation available at reset!")
         # Trajectory collection loop
         for _step in range(self.config.env.max_steps):
             active_masks = np.logical_not(is_done)
@@ -388,6 +406,13 @@ class TrajectoryCollector:
             for i in range(batch_size):
                 total_batch_list[i].append(batch_list[i])
                 total_infos[i].append(infos[i])
+                
+                # Store next observation for world model training (only for active environments)
+                if not is_done[i] and next_obs['anchor'] is not None:
+                    next_obs_i = next_obs['anchor'][i] if isinstance(next_obs['anchor'], (list, np.ndarray)) else next_obs['anchor']
+                    observation_sequences[i].append(str(next_obs_i))
+                    if _step == 0:  # Log first step for debugging
+                        print(f"🔍 DEBUG: Env {i} Step {_step+1}: Next observation collected (length: {len(str(next_obs_i))}, total obs: {len(observation_sequences[i])})")
 
             # Update done states
             is_done = np.logical_or(is_done, dones)
@@ -399,6 +424,12 @@ class TrajectoryCollector:
             if is_done.all():
                 break
         
+        # Debug: Log observation sequence statistics
+        print(f"🔍 DEBUG: Observation sequence collection complete:")
+        for i in range(min(3, batch_size)):  # Log first 3 environments
+            num_steps = len([step for step in total_batch_list[i] if step.get('active_masks', False)])
+            print(f"  Env {i}: {num_steps} steps taken, {len(observation_sequences[i])} observations collected")
+        
         success: Dict[str, np.ndarray] = envs.success_evaluator(
                     total_infos=total_infos,
                     total_batch_list=total_batch_list,
@@ -406,7 +437,7 @@ class TrajectoryCollector:
                     episode_lengths=episode_lengths,
                     )
         
-        return total_batch_list, episode_rewards, episode_lengths, success, traj_uid
+        return total_batch_list, episode_rewards, episode_lengths, success, traj_uid, observation_sequences
     
     def dynamic_multi_turn_loop(
             self,
@@ -445,7 +476,7 @@ class TrajectoryCollector:
                 print(f"valid num={len(total_batch_list)} < target num={self.config.data.train_batch_size * self.config.env.rollout.n}. Keep generating... ({try_count}/{max_try_count})")
             try_count += 1
 
-            batch_list, episode_rewards, episode_lengths, success, traj_uid = self.vanilla_multi_turn_loop(
+            batch_list, episode_rewards, episode_lengths, success, traj_uid, observation_sequences = self.vanilla_multi_turn_loop(
                 gen_batch=gen_batch,
                 actor_rollout_wg=actor_rollout_wg,
                 envs=envs,
@@ -500,9 +531,11 @@ class TrajectoryCollector:
                 actor_rollout_wg=actor_rollout_wg,
                 envs=envs,
             )
+            # TODO: Add observation sequence support for dynamic sampling
+            total_observation_sequences = [[] for _ in range(len(total_batch_list))]
         else:
             # Vanilla Sampling   
-            total_batch_list, total_episode_rewards, total_episode_lengths, total_success, total_traj_uid = \
+            total_batch_list, total_episode_rewards, total_episode_lengths, total_success, total_traj_uid, total_observation_sequences = \
                 self.vanilla_multi_turn_loop(
                 gen_batch=gen_batch,
                 actor_rollout_wg=actor_rollout_wg,
@@ -520,6 +553,7 @@ class TrajectoryCollector:
             episode_lengths=total_episode_lengths,
             success=total_success,
             traj_uid=total_traj_uid,
+            observation_sequences=total_observation_sequences,
         )
         
         return gen_batch_output

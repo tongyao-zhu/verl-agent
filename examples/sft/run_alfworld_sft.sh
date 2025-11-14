@@ -10,8 +10,8 @@ export VLLM_WORKER_MULTIPROC_METHOD="spawn"
 export TOKENIZERS_PARALLELISM=false
 
 nproc_per_node=8
-save_path=/home/aiops/zhuty/verl-agent/sft_models/model_sft1
-sft_data_dir=/home/aiops/zhuty/verl-agent/sft_data_20250913_062041
+save_path=/home/aiops/zhuty/verl-agent/sft_models/model_sft_new
+sft_data_dir=/home/aiops/zhuty/verl-agent/sft_data_20250923_064051
 
 # Shift the arguments so $@ refers to the rest
 shift 3
