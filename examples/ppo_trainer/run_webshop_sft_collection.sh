@@ -1,6 +1,6 @@
 #!/bin/bash
 
-# SFT Data Collection Script for AlfWorld
+# SFT Data Collection Script for WebShop
 # This script demonstrates how to collect SFT data using the existing PPO trainer infrastructure
 
 set -x
@@ -13,14 +13,14 @@ export COLLECT_SFT=True                    # Enable SFT data collection
 export SFT_SEED=97                         # Set seed for reproducible data
 export SFT_REQUIRE_SUCCESS=False           # Set to True to only collect successful trajectories
 export SFT_WORLDMODEL_MODE=add_worldmodel_1
-export PROMPT_TEMPLATE=add_wm2
+export PROMPT_TEMPLATE=default             # WebShop uses default template
 num_cpus_per_env_worker=0.01
 
 # Use smaller batch sizes for SFT collection to get more diverse episodes
 train_data_size=8   # Smaller batch for more episodes
 val_data_size=128
 
-echo "🎯 SFT Data Collection Mode Enabled"
+echo "🎯 SFT Data Collection Mode Enabled for WebShop"
 echo "   - COLLECT_SFT: $COLLECT_SFT"
 echo "   - SFT_SEED: $SFT_SEED"
 echo "   - SFT_REQUIRE_SUCCESS: $SFT_REQUIRE_SUCCESS"
@@ -34,7 +34,7 @@ python3 -m verl.trainer.main_ppo \
     data.val_files=$HOME/data/verl-agent/text/test.parquet \
     data.train_batch_size=$train_data_size \
     data.val_batch_size=$val_data_size \
-    data.max_prompt_length=2048 \
+    data.max_prompt_length=4096 \
     data.max_response_length=512 \
     data.filter_overlong_prompts=True \
     data.truncation='error' \
@@ -71,14 +71,14 @@ python3 -m verl.trainer.main_ppo \
     critic.model.fsdp_config.param_offload=False \
     critic.model.fsdp_config.optimizer_offload=False \
     algorithm.use_kl_in_reward=False \
-    env.env_name=alfworld/AlfredTWEnv \
+    env.env_name=Webshop \
     env.seed=0 \
-    env.max_steps=50 \
+    env.max_steps=15 \
     +env.prompt_template=${PROMPT_TEMPLATE:-default} \
     env.resources_per_worker.num_cpus=$num_cpus_per_env_worker \
     trainer.critic_warmup=0 \
     trainer.logger=['console','wandb'] \
-    trainer.project_name='verl_agent_alfworld_sft_collection' \
+    trainer.project_name='verl_agent_webshop_sft_collection' \
     trainer.experiment_name='sft_collection_qwen2.5_1.5b' \
     trainer.n_gpus_per_node=8 \
     trainer.nnodes=1 \
@@ -97,6 +97,6 @@ echo "💡 Usage Tips:"
 echo "   - Set SFT_REQUIRE_SUCCESS=True to only collect successful trajectories"
 echo "   - Adjust val_data_size to collect more/fewer episodes"
 echo "   - Use different SFT_SEED values for different data collections"
-echo "   - Set PROMPT_TEMPLATE=add_wm1 to use world modeling prompts with <prediction> tags"
 echo "   - The collected data can be used directly with SFT trainers"
+echo "   - WebShop has a maximum of 15 steps per episode"
 

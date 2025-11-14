@@ -7,10 +7,10 @@ num_cpus_per_env_worker=0.01 # The CPU resource allocated for each environment w
 train_data_size=128 # match GRPO and GiGPO configuration (16 × 8)
 val_data_size=128
 
-python3 -m examples.data_preprocess.prepare \
-    --mode 'text' \
-    --train_data_size $train_data_size \
-    --val_data_size $val_data_size
+# python3 -m examples.data_preprocess.prepare \
+#     --mode 'text' \
+#     --train_data_size $train_data_size \
+#     --val_data_size $val_data_size
 
 python3 -m verl.trainer.main_ppo \
     algorithm.adv_estimator=gae \
@@ -41,8 +41,9 @@ python3 -m verl.trainer.main_ppo \
     actor_rollout_ref.rollout.enable_chunked_prefill=False \
     actor_rollout_ref.rollout.enforce_eager=False \
     actor_rollout_ref.rollout.free_cache_engine=False \
-    actor_rollout_ref.rollout.val_kwargs.temperature=0.4 \
+    actor_rollout_ref.rollout.val_kwargs.temperature=1.0 \
     actor_rollout_ref.rollout.val_kwargs.do_sample=True \
+    actor_rollout_ref.rollout.val_kwargs.n=8 \
     actor_rollout_ref.ref.log_prob_micro_batch_size_per_gpu=16 \
     actor_rollout_ref.ref.fsdp_config.param_offload=True \
     actor_rollout_ref.actor.use_invalid_action_penalty=True \
@@ -67,6 +68,7 @@ python3 -m verl.trainer.main_ppo \
     trainer.nnodes=1 \
     trainer.save_freq=-1 \
     trainer.test_freq=5 \
-    trainer.total_epochs=150
+    trainer.total_epochs=150 \
+    +trainer.val_only=True
 #    trainer.val_before_train=True $@
 

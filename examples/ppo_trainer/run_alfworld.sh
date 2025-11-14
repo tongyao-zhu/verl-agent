@@ -2,7 +2,7 @@ set -x
 ENGINE=vllm
 export VLLM_ATTENTION_BACKEND=XFORMERS
 
-num_cpus_per_env_worker=0.1 # The CPU resource allocated for each environment worker. If you want to use less CPU resources, you can decrease this value.
+num_cpus_per_env_worker=0.05 # The CPU resource allocated for each environment worker. If you want to use less CPU resources, you can decrease this value.
 
 train_data_size=128 # match GRPO and GiGPO configuration (16 × 8)
 val_data_size=128
@@ -12,12 +12,51 @@ model_name=$1
 if [ -z "$model_name" ]; then
     model_name="Qwen/Qwen2.5-1.5B-Instruct"
     experiment_name="ppo_qwen2.5_1.5b"
+elif [ "$model_name" == "sft2-step42" ]; then
+    model_name="/home/aiops/zhuty/verl-agent/sft_models/model_sft2/global_step_42"
+    experiment_name="ppo_qwen2.5_1.5b-sft60"
 elif [ "$model_name" == "sft2-step84" ]; then
     model_name="/home/aiops/zhuty/verl-agent/sft_models/model_sft2/global_step_84"
     experiment_name="ppo_qwen2.5_1.5b-sft84"
 elif [ "$model_name" == "sft2-step126" ]; then
     model_name="/home/aiops/zhuty/verl-agent/sft_models/model_sft2/global_step_126"
     experiment_name="ppo_qwen2.5_1.5b-sft126"
+elif [ "$model_name" == "sft2-step168" ]; then
+    model_name="/home/aiops/zhuty/verl-agent/sft_models/model_sft2/global_step_168"
+    experiment_name="ppo_qwen2.5_1.5b-sft168"
+elif [ "$model_name" == "sft2-step210" ]; then
+    model_name="/home/aiops/zhuty/verl-agent/sft_models/model_sft2/global_step_210"
+    experiment_name="ppo_qwen2.5_1.5b-sft210"
+elif [ "$model_name" == "sftnew-step42" ]; then
+    model_name="/home/aiops/zhuty/verl-agent/sft_models/model_sft_new/global_step_42"
+    experiment_name="ppo_qwen2.5_1.5b-sftnew-step42"
+elif [ "$model_name" == "sftnew-step84" ]; then
+    model_name="/home/aiops/zhuty/verl-agent/sft_models/model_sft_new/global_step_84"
+    experiment_name="ppo_qwen2.5_1.5b-sftnew-step84"
+elif [ "$model_name" == "sftnew-step126" ]; then
+    model_name="/home/aiops/zhuty/verl-agent/sft_models/model_sft_new/global_step_126"
+    experiment_name="ppo_qwen2.5_1.5b-sftnew-step126"
+elif [ "$model_name" == "sftnew-step168" ]; then
+    model_name="/home/aiops/zhuty/verl-agent/sft_models/model_sft_new/global_step_168"
+    experiment_name="ppo_qwen2.5_1.5b-sftnew-step168"
+elif [ "$model_name" == "sftnew-step210" ]; then
+    model_name="/home/aiops/zhuty/verl-agent/sft_models/model_sft_new/global_step_210"
+    experiment_name="ppo_qwen2.5_1.5b-sftnew-step210"
+elif [ "$model_name" == "sftnew2-step43" ]; then
+    model_name="/home/aiops/zhuty/verl-agent/sft_models/model_sft_new2/global_step_43"
+    experiment_name="ppo_qwen2.5_1.5b-sftnew2-step43"
+elif [ "$model_name" == "sftnew2-step86" ]; then
+    model_name="/home/aiops/zhuty/verl-agent/sft_models/model_sft_new2/global_step_86"
+    experiment_name="ppo_qwen2.5_1.5b-sftnew2-step86"
+elif [ "$model_name" == "sftnew2-step129" ]; then
+    model_name="/home/aiops/zhuty/verl-agent/sft_models/model_sft_new2/global_step_129"
+    experiment_name="ppo_qwen2.5_1.5b-sftnew2-step129"
+elif [ "$model_name" == "sftnew2-step172" ]; then
+    model_name="/home/aiops/zhuty/verl-agent/sft_models/model_sft_new2/global_step_172"
+    experiment_name="ppo_qwen2.5_1.5b-sftnew2-step172"
+elif [ "$model_name" == "sftnew2-step215" ]; then
+    model_name="/home/aiops/zhuty/verl-agent/sft_models/model_sft_new2/global_step_215"
+    experiment_name="ppo_qwen2.5_1.5b-sftnew2-step215"
 else
     experiment_name="ppo_${model_name//\//_}"
 fi
@@ -35,10 +74,10 @@ if [ -z "$NUM_GPUS" ]; then
     NUM_GPUS=8
 fi
 
-python3 -m examples.data_preprocess.prepare \
-    --mode 'text' \
-    --train_data_size $train_data_size \
-    --val_data_size $val_data_size
+# python3 -m examples.data_preprocess.prepare \
+#     --mode 'text' \
+#     --train_data_size $train_data_size \
+#     --val_data_size $val_data_size
 
 python3 -m verl.trainer.main_ppo \
     algorithm.adv_estimator=gae \
@@ -62,14 +101,15 @@ python3 -m verl.trainer.main_ppo \
     actor_rollout_ref.model.enable_gradient_checkpointing=True \
     actor_rollout_ref.actor.fsdp_config.param_offload=True \
     actor_rollout_ref.actor.fsdp_config.optimizer_offload=True \
-    actor_rollout_ref.rollout.log_prob_micro_batch_size_per_gpu=32 \
-    actor_rollout_ref.rollout.tensor_model_parallel_size=4 \
+    actor_rollout_ref.rollout.log_prob_micro_batch_size_per_gpu=16 \
+    actor_rollout_ref.rollout.tensor_model_parallel_size=1 \
     actor_rollout_ref.rollout.name=$ENGINE \
     actor_rollout_ref.rollout.gpu_memory_utilization=0.7 \
     actor_rollout_ref.rollout.enable_chunked_prefill=False \
     actor_rollout_ref.rollout.enforce_eager=False \
     actor_rollout_ref.rollout.free_cache_engine=False \
     actor_rollout_ref.rollout.val_kwargs.temperature=0.4 \
+    actor_rollout_ref.rollout.val_kwargs.n=1 \
     actor_rollout_ref.rollout.val_kwargs.do_sample=True \
     actor_rollout_ref.ref.log_prob_micro_batch_size_per_gpu=32 \
     actor_rollout_ref.ref.fsdp_config.param_offload=True \
@@ -91,11 +131,13 @@ python3 -m verl.trainer.main_ppo \
     trainer.logger=['console','wandb'] \
     trainer.project_name='verl_agent_alfworld' \
     trainer.experiment_name=$experiment_name \
-    trainer.max_actor_ckpt_to_keep=1 \
-    trainer.max_critic_ckpt_to_keep=1 \
     trainer.n_gpus_per_node=$NUM_GPUS \
+    trainer.default_local_dir=/home/aiops/zhuty/verl-agent-checkpoints-2/${experiment_name} \
+    trainer.max_actor_ckpt_to_keep=50 \
+    trainer.max_critic_ckpt_to_keep=1 \
     trainer.nnodes=1 \
     trainer.save_freq=25 \
     trainer.test_freq=5 \
-    trainer.total_epochs=150 \
-    trainer.val_before_train=True
+    trainer.total_epochs=1000 \
+    trainer.val_before_train=True \
+    trainer.log_val_generations=100 
